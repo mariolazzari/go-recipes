@@ -20,7 +20,6 @@ func Sum(nums []int) int {
 }
 
 func Mean(nums []int) float64 {
-
 	sum := float64(Sum(nums))
 	if sum == 0 {
 		return 0
