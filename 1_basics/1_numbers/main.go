@@ -20,8 +20,11 @@ func Sum(nums []int) int {
 }
 
 func Mean(nums []int) float64 {
-	sum := Sum(nums)
-	mean := float64(sum) / float64(len(nums))
 
-	return mean
+	sum := float64(Sum(nums))
+	if sum == 0 {
+		return 0
+	}
+
+	return sum / float64(len(nums))
 }
