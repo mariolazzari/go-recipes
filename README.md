@@ -281,5 +281,419 @@ func main() {
 ### Time arithmetic
 
 ```go
+package main
 
+import (
+ "fmt"
+ "time"
+)
+
+func isBusinessDay(date time.Time) bool {
+ wday := date.Weekday()
+ if wday == time.Saturday || wday == time.Sunday {
+  return false
+ }
+
+ return true
+}
+
+func nextBusinessDay(date time.Time) time.Time {
+ const day = 24 * time.Hour
+ for {
+  date = date.Add(day)
+  if isBusinessDay(date) {
+   break
+  }
+ }
+
+ return date
+}
+
+func main() {
+ date := time.Date(2021, time.December, 31, 0, 0, 0, 0, time.UTC)
+ fmt.Println(date, date.Weekday()) // 2021-12-31 00:00:00 +0000 UTC Friday
+ nbd := nextBusinessDay(date)
+ fmt.Println(nbd, nbd.Weekday()) // 2022-01-03 00:00:00 +0000 UTC Monday
+
+ date = time.Date(2022, time.January, 4, 0, 0, 0, 0, time.UTC)
+ fmt.Println(date, date.Weekday()) // 2022-01-04 00:00:00 +0000 UTC Tuesday
+ nbd = nextBusinessDay(date)
+ fmt.Println(nbd, nbd.Weekday()) // 2022-01-05 00:00:00 +0000 UTC Wednesday
+}
+```
+
+### Time measuring
+
+```go
+package main
+
+import (
+ "fmt"
+ "log"
+ "time"
+)
+
+func timeit(name string) func() {
+ start := time.Now()
+
+ return func() {
+  duration := time.Since(start)
+  log.Printf("%s took %s", name, duration)
+ }
+}
+
+func dot(v1, v2 []float64) (float64, error) {
+ defer timeit("dot")()
+
+ if len(v1) != len(v2) {
+  return 0, fmt.Errorf("dot of different size vectors")
+ }
+
+ d := 0.0
+ for i, val1 := range v1 {
+  val2 := v2[i]
+  d += val1 * val2
+ }
+
+ return d, nil
+}
+
+func main() {
+ v := []float64{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
+ fmt.Println(dot(v, v))
+}
+```
+
+### Formatting times
+
+```go
+package main
+
+import (
+ "fmt"
+ "time"
+)
+
+func main() {
+ lennon := time.Date(1940, time.October, 9, 18, 30, 0, 0, time.UTC)
+ fmt.Println(lennon) // 1940-10-09 18:30:00 +0000 UTC
+
+ fmt.Println(lennon.Format("2006-01-02"))  // 1940-10-09
+ fmt.Println(lennon.Format("Mon, Jan 02")) // Wed, Oct 09
+
+ fmt.Println(lennon.Format(time.RFC3339Nano)) // 1940-10-09T18:30:00Z
+
+ d := 3500 * time.Millisecond
+ fmt.Println(d) // 3.5s
+}
+```
+
+### Parsing times
+
+```go
+package main
+
+import (
+ "fmt"
+ "time"
+)
+
+func main() {
+ ts := "June 18, 1942"
+
+ t, err := time.Parse("January 02, 2006", ts)
+ if err != nil {
+  fmt.Printf("error: %s\n", err)
+ } else {
+  fmt.Println(t) // 1942-06-18 00:00:00 +0000 UTC
+ }
+
+ ds := "2700ms"
+ d, err := time.ParseDuration(ds)
+ if err != nil {
+  fmt.Printf("error: %s\n", err)
+ } else {
+  fmt.Println(d) // 2.7s
+ }
+}
+```
+
+### Time zones
+
+```go
+package main
+
+import (
+ "fmt"
+ "time"
+)
+
+func main() {
+ chi, err := time.LoadLocation("America/Chicago")
+ if err != nil {
+  fmt.Printf("error: %s", err)
+  return
+ }
+
+ chiTime := time.Date(2021, time.February, 28, 19, 30, 0, 0, chi)
+ fmt.Println("Chicago:", chiTime) // Chicago: 2021-02-28 19:30:00 -0600 CST
+
+ nyc, err := time.LoadLocation("America/New_York")
+ if err != nil {
+  fmt.Printf("error: %s", err)
+  return
+ }
+
+ nycTime := chiTime.In(nyc)
+ fmt.Println("NYC:", nycTime) // NYC: 2021-02-28 20:30:00 -0500 EST
+}
+```
+
+### Challenge: time zones
+
+```go
+package main
+
+import (
+ "fmt"
+ "time"
+)
+
+// tsConvert convert time stamp in "YYYY-MM-DDTHH:MM" format from one time zone to another
+func tsConvert(ts, from, to string) (string, error) {
+ fromTz, err := time.LoadLocation(from)
+ if err != nil {
+  return "", err
+ }
+
+ toTz, err := time.LoadLocation(to)
+ if err != nil {
+  return "", err
+ }
+
+ const format = "2006-01-02T15:04"
+ fromTime, err := time.ParseInLocation(format, ts, fromTz)
+ if err != nil {
+  return "", err
+ }
+
+ toTime := fromTime.In(toTz)
+ return toTime.Format(format), nil
+}
+
+func main() {
+ ts := "2021-03-08T19:12"
+ out, err := tsConvert(ts, "America/Los_Angeles", "Asia/Jerusalem")
+ if err != nil {
+  fmt.Printf("error: %s", err)
+  return
+ }
+
+ fmt.Println(out) // 2021-03-09T05:12
+}
+```
+
+## Strings
+
+### String formatting
+
+```go
+package main
+
+import (
+ "fmt"
+ "io"
+ "log"
+ "os"
+)
+
+// Trade represents a trade
+type Trade struct {
+ Symbol string
+ Volume int
+ Price  float64
+}
+
+// genReport generates a fixed with report in the format
+// Symbol: 10 chars, left padded
+// Volume: 4 digits, 0 padded
+// Price: 2 digits after the decimal
+func genReport(w io.Writer, trades []Trade) {
+ for i, t := range trades {
+  log.Printf("%d: %#v", i, t)
+  // ... 2: main.Trade{Symbol:"BRK-A", Volume:1, Price:399100}
+  fmt.Fprintf(w, "%-10s %04d %.2f\n", t.Symbol, t.Volume, t.Price)
+  // MSFT       0231 234.57
+ }
+}
+
+func main() {
+ log.SetPrefix("LOG: ")
+
+ trades := []Trade{
+  {"MSFT", 231, 234.57},
+  {"TSLA", 123, 686.75},
+  {"BRK-A", 1, 399100},
+ }
+ genReport(os.Stdout, trades)
+}
+```
+
+### Unicode
+
+```go
+package main
+
+import (
+ "fmt"
+ "unicode/utf8"
+)
+
+func lineLength(words []string) int {
+ total := 0
+ for _, word := range words {
+  total += utf8.RuneCountInString(word)
+ }
+
+ numSpaces := len(words) - 1
+ return total + numSpaces
+}
+
+func main() {
+ words := []string{"«", "Don't", "Panic", "»"}
+ fmt.Println(lineLength(words)) // 15
+}
+```
+
+### Case insensitive
+
+```go
+package main
+
+import (
+ "fmt"
+ "strings"
+)
+
+// Letter in Greek
+type Letter struct {
+ Symbol  string
+ English string
+}
+
+var letters = []Letter{
+ {"Σ", "Sigma"},
+ // TODO
+}
+
+// englishFor return the English name for a greek letter
+func englishFor(greek string) (string, error) {
+ for _, letter := range letters {
+  if strings.EqualFold(greek, letter.Symbol) {
+   return letter.English, nil
+  }
+ }
+
+ return "", fmt.Errorf("unknown greek letter: %#v", greek)
+}
+
+func main() {
+ fmt.Println(englishFor("Σ"))
+ fmt.Println(englishFor("σ"))
+ fmt.Println(englishFor("ς"))
+}
+```
+
+### Regular expressions
+
+```go
+package main
+
+import (
+ "fmt"
+ "log"
+ "regexp"
+ "strconv"
+)
+
+/*
+12 shares of MSFT for $234.57
+10 shares of TSLA for $692.4
+*/
+var transRe = regexp.MustCompile(`(\d+) shares of ([A-Z]+) for \$(\d+(\.\d+)?)`)
+
+// Transaction is a b
+type Transaction struct {
+ Symbol string
+ Volume int
+ Price  float64
+}
+
+func parseLine(line string) (Transaction, error) {
+ matches := transRe.FindStringSubmatch(line)
+ if matches == nil {
+  return Transaction{}, fmt.Errorf("bad line: %q", line)
+ }
+ var t Transaction
+ t.Symbol = matches[2]
+ t.Volume, _ = strconv.Atoi(matches[1])
+ t.Price, _ = strconv.ParseFloat(matches[3], 64)
+ return t, nil
+}
+
+func main() {
+ line := "12 shares of MSFT for $234.57"
+ t, err := parseLine(line)
+ if err != nil {
+  log.Fatal(err)
+ }
+ fmt.Printf("%+v\n", t) // {Symbol:MSFT Volume:12 Price:234.57}
+}
+```
+
+### Reading text files
+
+```go
+package main
+
+import (
+ "bufio"
+ "fmt"
+ "io"
+ "log"
+ "os"
+ "strings"
+)
+
+// grep returns lines in r that contain term
+func grep(r io.Reader, term string) ([]string, error) {
+ var matches []string
+ s := bufio.NewScanner(r)
+ for s.Scan() {
+  if strings.Contains(s.Text(), term) {
+   matches = append(matches, s.Text())
+  }
+ }
+
+ if err := s.Err(); err != nil {
+  return nil, err
+ }
+
+ return matches, nil
+}
+
+func main() {
+ file, err := os.Open("journal.txt")
+ if err != nil {
+  log.Fatal(err)
+ }
+ defer file.Close()
+
+ matches, err := grep(file, "System is rebooting")
+ if err != nil {
+  log.Fatal(err)
+ }
+
+ fmt.Printf("%d reboots\n", len(matches))
+}
 ```
