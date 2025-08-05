@@ -750,3 +750,163 @@ func main() {
  }
 }
 ```
+
+## Structs
+
+### Go structs
+
+```go
+package main
+
+import (
+ "fmt"
+ "log"
+ "time"
+)
+
+type Event struct {
+ ID   string
+ Time time.Time
+}
+
+type DoorEvent struct {
+ Event
+ Action string // open, close
+}
+
+type TemperatureEvent struct {
+ Event
+ Value float64
+}
+
+func NewDoorEvent(id string, time time.Time, action string) (*DoorEvent, error) {
+ if id == "" {
+  return nil, fmt.Errorf("empty id")
+ }
+
+ evt := DoorEvent{
+  Event:  Event{id, time},
+  Action: action,
+ }
+ return &evt, nil
+}
+
+func main() {
+ evt, err := NewDoorEvent("front door", time.Now(), "open")
+ if err != nil {
+  log.Fatal(err)
+ }
+
+ fmt.Printf("%+v\n", evt)
+ // &{Event:{ID:front door Time:2021-04-30 14:47:40.31038 +0300 IDT m=+0.000170354} Action:open}
+}
+```
+
+### Go methods
+
+```go
+package main
+
+import (
+ "fmt"
+)
+
+// A Thermostat measures and controls the temperature
+type Thermostat struct {
+ ID string
+
+ value float64
+}
+
+// Value return the current temperature in Celsius
+func (t *Thermostat) Value() float64 {
+ return t.value
+}
+
+// Set tells the thermostat to set the temperature
+func (t *Thermostat) Set(value float64) {
+ t.value = value
+}
+
+// Kind returns the device kind
+func (*Thermostat) Kind() string {
+ return "thermostat"
+}
+
+func main() {
+ t := Thermostat{"Living Room", 16.2}
+ fmt.Printf("%s before: %.2f\n", t.ID, t.Value())
+ // Living Room before: 16.20
+ t.Set(18)
+ fmt.Printf("%s after:  %.2f\n", t.ID, t.Value())
+ // Living Room after:  18.00
+}
+```
+
+### Go interfaces
+
+```go
+package main
+
+import (
+ "fmt"
+)
+
+// A Thermostat measures and controls the temperature
+type Thermostat struct {
+ id    string
+ value float64
+}
+
+// ID return the thermostat ID
+func (t *Thermostat) ID() string {
+ return t.id
+}
+
+// Value return the current temperature in Celsius
+func (t *Thermostat) Value() float64 {
+ return t.value
+}
+
+// Kind returns the device kind
+func (*Thermostat) Kind() string {
+ return "thermostat"
+}
+
+// Camera is a security camera
+type Camera struct {
+ id string
+}
+
+// ID return the camera ID
+func (c *Camera) ID() string {
+ return c.id
+}
+
+func (*Camera) Kind() string {
+ return "camera"
+}
+
+type Sensor interface {
+ ID() string
+ Kind() string
+}
+
+func printAll(sensors []Sensor) {
+ for _, s := range sensors {
+  fmt.Printf("%s <%s>\n", s.ID(), s.Kind())
+ }
+}
+
+func main() {
+ t := Thermostat{"Living Room", 16.2}
+ c := Camera{"Baby room"}
+
+ sensors := []Sensor{&t, &c}
+ printAll(sensors)
+ /*
+  Living Room <thermostat>
+  Baby room <camera>
+ */
+}
+```
