@@ -1312,3 +1312,246 @@ func main() {
  // station 3
 }
 ```
+
+### Marshalling JSON
+
+```go
+package main
+
+import (
+ "encoding/json"
+ "fmt"
+ "os"
+)
+
+// Quantity is combination of value and unit (e.g. 2.7cm)
+type Quantity struct {
+ Value float64
+ Unit  string
+}
+
+// MarshalJSON implements the json.Marshaler interface
+// Example encoding: "42.195km"
+func (q *Quantity) MarshalJSON() ([]byte, error) {
+ if q.Unit == "" {
+  return nil, fmt.Errorf("empty  unit")
+ }
+ text := fmt.Sprintf("%f%s", q.Value, q.Unit)
+ return json.Marshal(text)
+}
+
+func main() {
+ q := Quantity{1.78, "meter"}
+ json.NewEncoder(os.Stdout).Encode(&q) // "1.780000meter"
+}
+```
+
+### Missing values
+
+```go
+package main
+
+import (
+ "encoding/json"
+ "fmt"
+)
+
+// LineItem is a line in receipt
+type LineItem struct {
+ SKU      string
+ Price    float64
+ Discount float64
+ Quantity int
+}
+
+// NewLineItem returns a new line item with default values
+func NewLineItem() LineItem {
+ return LineItem{
+  Quantity: 1,
+ }
+}
+
+func unmarshalLineItem(data []byte) (LineItem, error) {
+ li := NewLineItem()
+ if err := json.Unmarshal(data, &li); err != nil {
+  return LineItem{}, nil
+ }
+
+ if li.Quantity < 1 {
+  return LineItem{}, fmt.Errorf("bad quantity")
+ }
+
+ return li, nil
+}
+
+func main() {
+ data := []byte(`{"sku": "x3xs", "price": 1.2}`)
+ li, err := unmarshalLineItem(data)
+ if err != nil {
+  fmt.Println("ERROR:", err)
+ } else {
+  fmt.Printf("%#v\n", li)
+ }
+ // main.LineItem{SKU:"x3xs", Price:1.2, Discount:0, Quantity:1}
+
+ data = []byte(`{"sku": "x3xs", "price": 1.2, "quantity": 0}`)
+ li, err = unmarshalLineItem(data)
+ if err != nil {
+  fmt.Println("ERROR:", err)
+ } else {
+  fmt.Printf("%#v\n", li)
+ }
+ // ERROR: bad quantity
+}
+```
+
+### Map structure
+
+```go
+package main
+
+import (
+ "encoding/json"
+ "fmt"
+
+ "github.com/mitchellh/mapstructure"
+)
+
+// StartJob is a request to start a job
+type StartJob struct {
+ Type  string
+ User  string
+ Count int
+}
+
+// JobStatus is a request for job status
+type JobStatus struct {
+ Type string
+ ID   string
+}
+
+func handleStart(req StartJob) error {
+ fmt.Printf("start: %#v\n", req)
+ return nil // FIXME
+}
+
+func handleStatus(req JobStatus) error {
+ fmt.Printf("status: %#v\n", req)
+ return nil // FIXME
+}
+
+func handleRequest(data []byte) error {
+ var m map[string]interface{}
+ if err := json.Unmarshal(data, &m); err != nil {
+  return err
+ }
+
+ val, ok := m["type"]
+ if !ok {
+  return fmt.Errorf("'type' missing from JSON")
+ }
+
+ typ, ok := val.(string)
+ if !ok {
+  return fmt.Errorf("'type' is not a string")
+ }
+
+ switch typ {
+ case "start":
+  var sj StartJob
+  if err := mapstructure.Decode(m, &sj); err != nil {
+   return fmt.Errorf("bad 'start' request: %w", err)
+  }
+  return handleStart(sj)
+ case "status":
+  var js JobStatus
+  if err := mapstructure.Decode(m, &js); err != nil {
+   return fmt.Errorf("bad 'status' request: %w", err)
+  }
+  return handleStatus(js)
+ }
+
+ return fmt.Errorf("unknown request type: %q", typ)
+}
+
+func main() {
+ data := []byte(`{"type": "start", "user": "joe", "count": 7}`)
+ if err := handleRequest(data); err != nil {
+  fmt.Println("ERROR:", err)
+ }
+ // start: main.StartJob{Type:"start", User:"joe", Count:7}
+
+ data = []byte(`{"type": "status", "id": "seven"}`)
+ if err := handleRequest(data); err != nil {
+  fmt.Println("ERROR:", err)
+ }
+ // status: main.JobStatus{Type:"status", ID:"seven"}
+}
+```
+
+### Challenge JSON
+
+```go
+// What is the maximal ride speed in rides.json?
+package main
+
+import (
+ "encoding/json"
+ "fmt"
+ "io"
+ "log"
+ "os"
+ "time"
+)
+
+func maxRideSpeed(r io.Reader) (float64, error) {
+ dec := json.NewDecoder(r)
+ maxSpeed := -1.0
+ for {
+  var ride struct {
+   StartTime string `json:"start"`
+   EndTime   string `json:"end"`
+   Distance  float64
+  }
+  err := dec.Decode(&ride)
+  if err == io.EOF {
+   break
+  }
+  if err != nil {
+   return 0, err
+  }
+
+  const timeFmt = "2006-01-02T15:04"
+  startTime, err := time.Parse(timeFmt, ride.StartTime)
+  if err != nil {
+   return 0, err
+  }
+  endTime, err := time.Parse(timeFmt, ride.EndTime)
+  if err != nil {
+   return 0, err
+  }
+  dt := endTime.Sub(startTime)
+  dtHour := float64(dt) / float64(time.Hour)
+  speed := ride.Distance / dtHour
+  if speed > maxSpeed {
+   maxSpeed = speed
+  }
+ }
+
+ return maxSpeed, nil
+}
+
+func main() {
+ file, err := os.Open("rides.json")
+ if err != nil {
+  log.Fatal(err)
+ }
+ defer file.Close()
+
+ speed, err := maxRideSpeed(file)
+ if err != nil {
+  log.Fatal(err)
+ }
+ fmt.Println(speed) // 40.5
+}
+```
